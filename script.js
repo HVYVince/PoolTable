@@ -15,7 +15,8 @@ const anticlip = 0.01;
 const holepermission = 0.08;
 const ballray = 0.032;
 const spacebar = 32;
-const queueMargin = -0.3;
+const queueMargin = -0.25;
+const queueCorrection = 0.565;
 
 var WIDTH  = window.innerWidth;
 var HEIGHT = window.innerHeight;
@@ -58,19 +59,19 @@ function init() {
 	}];
 
 	balls = [];
-	balls.push(getBall(-0.7, 0.0));
-	balls.push(getBall(-0.8, 0.05));
-	balls.push(getBall(-0.8, -0.05));
-	balls.push(getBall(-0.9, 0.1));
-	balls.push(getBall(-0.9, 0.0));
-	balls.push(getBall(-0.9, -0.1));
-	balls.push(getBall(-1.0, 0.15));
-	balls.push(getBall(-1.0, 0.05));
-	balls.push(getBall(-1.0, -0.05));
-	balls.push(getBall(-1.0, -0.15));
-	mainball = getBall(2, 0);
+	balls.push(getBall(0, -0.7, 0.0));
+	balls.push(getBall(1, -0.8, 0.05));
+	balls.push(getBall(2, -0.8, -0.05));
+	balls.push(getBall(3, -0.9, 0.1));
+	balls.push(getBall(4, -0.9, 0.0));
+	balls.push(getBall(5, -0.9, -0.1));
+	balls.push(getBall(6, -1.0, 0.15));
+	balls.push(getBall(7, -1.0, 0.05));
+	balls.push(getBall(8, -1.0, -0.05));
+	balls.push(getBall(9, -1.0, -0.15));
+	mainball = getBall(10, 2, 0);
 	queueCenter = new THREE.Object3D();
-	queueCenter.position.x = 2;
+	queueCenter.position.x = 2 - queueCorrection;
 	queueCenter.position.y = 0.95;
 	queueCenter.position.z = 0;
 	queueCenter.rotation.z = 0.2;
@@ -83,20 +84,24 @@ function init() {
 
     document.body.appendChild(renderer.domElement);
 	document.addEventListener("keydown", function (event) {
-		// if(movement)
-		// 	return;
+		if(movement)
+		 	return;
 	    var keyCode = event.which;
 		if(keyCode == spacebar) {
-			mainball.speed.x = -hitForce;
+			mainball.speed.x = -hitForce * Math.cos(queueCenter.rotation.y);
+			mainball.speed.y = hitForce * Math.sin(queueCenter.rotation.y);
 			scene.remove(queueCenter);
 			movement = true;
 		}
-		else if(keyCode == 13){
-			mainball.speed.x = -hitForce;
-			mainball.speed.y = -hitForce;
+		else if(keyCode == 13) {
+			mainball.speed.x = -hitForce * Math.cos(queueCenter.rotation.y) * 0.5;
+			mainball.speed.y = hitForce * Math.sin(queueCenter.rotation.y) * 0.5;
 			scene.remove(queueCenter);
 			movement = true;
 		}
+	}, false);
+	document.addEventListener("mousemove", function (event) {
+		queueCenter.rotation.y = (event.x / WIDTH) * 2 * Math.PI + Math.PI;
 	}, false);
 
 }
@@ -130,8 +135,9 @@ function vectorNorm(vec) {
 	return Math.sqrt((vec.x * vec.x) + (vec.y * vec.y));
 }
 
-function getBall(givenX = 0, givenY = 0) {
+function getBall(givenId, givenX = 0, givenY = 0) {
 	return {
+		id : givenId,
 		speed : {
 			x : 0,
 			y : 0
@@ -144,7 +150,7 @@ function getBall(givenX = 0, givenY = 0) {
 		//nextpos : undefined,
 		renderObject : undefined,
 		onBoard : true,
-		justCollided : false
+		collision : [false, false, false, false, false, false, false, false, false, false, false]
 	};
 }
 
@@ -222,11 +228,11 @@ function initMesh() {
 	mtlLoader.setPath('meshes/');
 	mtlLoader.load('queue.mtl', function (materials) {
 		materials.preload();
-		materials.materials.Cue.color = {
-			r : 74,
-			g : 35,
-			b : 1
-		};
+		// materials.materials.Cue.color = {
+		// 	r : 74,
+		// 	g : 35,
+		// 	b : 1
+		// };
 		var objLoader = new THREE.OBJLoader();
 		objLoader.setMaterials(materials);
 		objLoader.setPath('meshes/');
@@ -242,9 +248,9 @@ function initMesh() {
 				object.position.x = 0;
 				object.position.z = 0;
 				object.position.y = 0;
-				object.position.x += queueMargin;
+				object.position.x -= queueMargin;
 			 	object.position.z -= 0.015;
-				object.position.y = 1.1;
+				object.position.y = 0.97;
 			}
 			queueCenter.add(object);
 			queue = object;
@@ -256,22 +262,27 @@ function initMesh() {
 }
 
 function ballIsCollided(testBall, otherBall) {
-	return Math.abs(testBall.pos.x - otherBall.pos.x) <= 2 * ballray && Math.abs(testBall.pos.y - otherBall.pos.y) <= 2 * ballray
+	return Math.abs(testBall.pos.x - otherBall.pos.x) <= 2 * ballray && Math.abs(testBall.pos.y - otherBall.pos.y) <= 2 * ballray;
 }
 
 function collideBalls(testBall, otherBall) {
 	if(ballIsCollided(testBall, otherBall)) {
-		testBall.currentlyCollided = true;
-		var scalar = scalarProduct(vectorSub(testBall.speed, otherBall.speed), vectorSub(testBall.pos, otherBall.pos));
-		var denom = vectorNorm(vectorSub(testBall.pos, otherBall.pos));
-		denom *= denom;
-		var product = vectorMult(vectorSub(testBall.pos, otherBall.pos), scalar / denom);
-		var result = vectorMult(vectorSub(testBall.speed, product), ballabsorption);
-		if(testBall.nextspeed == undefined)
-			testBall.nextspeed = result;
-		else
-			testBall.nextspeed = vectorAdd(testBall.nextspeed, result);
-		testBall.justCollided = true;
+		if(!testBall.collision[otherBall.id]) {
+			var scalar = scalarProduct(vectorSub(testBall.speed, otherBall.speed), vectorSub(testBall.pos, otherBall.pos));
+			var denom = vectorNorm(vectorSub(testBall.pos, otherBall.pos));
+			denom *= denom;
+			var product = vectorMult(vectorSub(testBall.pos, otherBall.pos), scalar / denom);
+			var result = vectorMult(vectorSub(testBall.speed, product), ballabsorption);
+			if(testBall.nextspeed == undefined)
+				testBall.nextspeed = result;
+			else
+				testBall.nextspeed = vectorAdd(testBall.nextspeed, result);
+			testBall.collision[otherBall.id] = true;
+		}
+	}
+	else {
+		//console.log("separating " + testBall.id + " and " + otherBall.id);
+		testBall.collision[otherBall.id] = false;
 	}
 
 		// if(testBall.pos.x > otherBall.pos.x)
@@ -336,11 +347,11 @@ function applySpeed(ball) {
 
 	ball.pos.x += ball.speed.x;
 	ball.pos.y += ball.speed.y;
-	if(ball.justCollided) {
-		ball.pos.x += Math.sign(ball.speed.x) * (anticlip / 5.0);
-		ball.pos.y += Math.sign(ball.speed.y) * (anticlip / 5.0);
-		ball.justCollided = false;
-	}
+	// if(ball.justCollided) {
+	// 	ball.pos.x += Math.sign(ball.speed.x) * (anticlip / 5.0);
+	// 	ball.pos.y += Math.sign(ball.speed.y) * (anticlip / 5.0);
+	// 	ball.justCollided = false;
+	// }
 }
 
 function updatePositions() {
@@ -408,6 +419,9 @@ function render() {
 	updateScene();
 	if(!checkMovement()) {
 		movement = false;
+		queueCenter.position.x = mainball.pos.x - queueCorrection;
+		queueCenter.position.z = mainball.pos.y;
+		scene.add(queueCenter);
 	}
 }
 
